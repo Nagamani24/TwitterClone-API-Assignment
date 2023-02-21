@@ -156,14 +156,22 @@ app.get("/user/followers/", authenticateToken, async (request, response) => {
 
 app.get("/tweets/:tweetId/", authenticateToken, async (request, response) => {
   const { tweetId } = request.params;
-  const getTweetDetailsQuery = `SELECT tweet.tweet,count(like.like_id),count(reply.reply_id),F3.date_time
-                                    FROM user Inner Join follower on user.user_id = follower.follower_user_id AS F1
-                                    Inner Join tweet on F1.user_id = tweet.user_id AS F2 Inner Join reply on
-                                    F2.user_id = reply.user_id AS F3 Inner Join like on F3.user_id = like.user_id
-                                    WHERE F3.tweet_id = ${tweetId}
-                                    GROUP BY tweet_id;`;
-  const getTweetDetails = await db.get(getTweetDetailsQuery);
-  console.log(getTweetDetails);
+  const checkUserFollowedQuery = `SELECT *
+                                    FROM user Inner Join follower on user.user_id = follower.follower_user_id;`;
+  const checkUserFollowed = await db.get(checkUserFollowedQuery);
+  if (checkUserFollowed !== undefined) {
+    const getTweetDetailsQuery = `SELECT tweet,count(like_id),count(reply_id),date_time
+                                    FROM user Inner Join follower AS F1 on user.user_id = F1.follower_user_id 
+                                    Inner Join tweet AS F2 on F2.user_id = F2.user_id  Inner Join reply AS F3 on
+                                    F2.user_id = F3.user_id  Inner Join like AS F4 on F3.user_id = F4.user_id
+                                    WHERE F4.tweet_id = ${tweetId}
+                                    GROUP BY F4.tweet_id;`;
+    const getTweetDetails = await db.get(getTweetDetailsQuery);
+    response.send(getTweetDetails);
+  } else {
+    response.status(401);
+    response.send("Invalid Request");
+  }
 });
 
 //API 7
