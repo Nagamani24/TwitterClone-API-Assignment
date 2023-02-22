@@ -122,8 +122,10 @@ const authenticateToken = (request, response, next) => {
 
 app.get("/user/tweets/feed/", authenticateToken, async (request, response) => {
   const latestTweetsQuery = `SELECT username,tweet,date_time
-                                FROM user Inner Join tweet 
-                                on user.user_id = tweet.user_id
+                                FROM (follower Inner Join tweet 
+                                on follower.following_user_id = tweet.user_id) AS T
+                                Inner Join user on T.user_id = user.user_id
+                                
                                 ORDER BY tweet.date_time DESC
                                 LIMIT 4;`;
   const latestTweets = await db.all(latestTweetsQuery);
@@ -135,7 +137,7 @@ app.get("/user/tweets/feed/", authenticateToken, async (request, response) => {
 app.get("/user/following/", authenticateToken, async (request, response) => {
   const userFollowedListQuery = `SELECT username
                                     FROM user Inner Join follower
-                                    on user.user_id = follower.following_user_id
+                                    on user.user_id = follower.follower_user_id
                                     GROUP BY username;`;
   const userFollowedList = await db.all(userFollowedListQuery);
   response.send(userFollowedList);
@@ -146,7 +148,7 @@ app.get("/user/following/", authenticateToken, async (request, response) => {
 app.get("/user/followers/", authenticateToken, async (request, response) => {
   const userFollowingListQuery = `SELECT username
                                     FROM user Inner Join follower
-                                    on user.user_id = follower.follower_user_id
+                                    on user.user_id = follower.following_user_id
                                     GROUP BY username;`;
   const userFollowingList = await db.all(userFollowingListQuery);
   response.send(userFollowingList);
@@ -181,5 +183,88 @@ app.get(
   authenticateToken,
   async (request, response) => {
     const { tweetId } = request.params;
+    const checkUserFollowedQuery = `SELECT *
+                                    FROM user Inner Join follower on user.user_id = follower.follower_user_id;`;
+    const checkUserFollowed = await db.get(checkUserFollowedQuery);
+    if (checkUserFollowed !== undefined) {
+      const getUsernameLikedQuery = `SELECT username
+                                        FROM user Inner Join like AS T1 on user.user_id = T1.user_id
+                                        Inner Join tweet AS T2 on T1.user_id = T2.user_id
+                                        WHERE T2.tweet_id = ${tweetId}
+                                        GROUP BY username;`;
+      const getUsernamesLiked = await db.all(getUsernameLikedQuery);
+
+      let listOfUsernames = [];
+      getUsernamesLiked.map((each) => {
+        listOfUsernames.push(each.username);
+      });
+      response.send(listOfUsernames);
+    } else {
+      response.status(401);
+      response.send("Invalid Request");
+    }
   }
 );
+
+//API 8
+
+app.get(
+  "/tweets/:tweetId/replies/",
+  authenticateToken,
+  async (request, response) => {
+    const { tweetId } = request.params;
+    const checkUserFollowedQuery = `SELECT *
+                                    FROM user Inner Join follower on user.user_id = follower.follower_user_id;`;
+    const checkUserFollowed = await db.get(checkUserFollowedQuery);
+    if (checkUserFollowed !== undefined) {
+      const getUsernameRepliedQuery = `SELECT username,reply
+                                        FROM user Inner Join reply AS T1 on user.user_id = T1.user_id
+                                        Inner Join tweet AS T2 on T1.user_id = T2.user_id
+                                        WHERE T2.tweet_id = ${tweetId}
+                                        GROUP BY username;`;
+      const getUsernamesReplied = await db.all(getUsernameRepliedQuery);
+
+      let listOfUsernames = [];
+      getUsernamesReplied.map((each) => {
+        listOfUsernames.push({ username: each.username, reply: each.reply });
+      });
+      response.send(listOfUsernames);
+    } else {
+      response.status(401);
+      response.send("Invalid Request");
+    }
+  }
+);
+
+//API 9
+
+app.get("/user/tweets/", authenticateToken, async (request, response) => {
+  const listOfTweetsQuery = `SELECT tweet,COUNT(like_id),COUNT(reply_id),date_time
+                                FROM tweet Inner Join like AS T1 on tweet.user_id = T1.user_id
+                                Inner Join reply AS T2 on T1.user_id = T2.user_id
+                                GROUP BY T2.user_id;`;
+  const listOfTweets = await db.all(listOfTweetsQuery);
+  response.send(listOfTweets);
+});
+
+//API 10
+
+app.post("/user/tweets/", authenticateToken, async (request, response) => {
+  const { tweet } = request.body;
+  const createTweetQuery = `INSERT INTO tweet(tweet)
+                                VALUES('${tweet}');`;
+  const createTweet = await db.run(createTweetQuery);
+  response.send("Created a Tweet");
+});
+
+//API 11
+
+app.delete(
+  "/tweets/:tweetId/",
+  authenticateToken,
+  async (request, response) => {
+    const { tweetId } = request.params;
+  }
+);
+
+module.exports = app;
